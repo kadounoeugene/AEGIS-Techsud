@@ -9,16 +9,14 @@ import subprocess
 import re
 import sys
 
-# Couleurs pour affichage terminal
 OK = "\033[92m[OK]\033[0m"
 FAIL = "\033[91m[FAIL]\033[0m"
-WARN = "\033[93m[WARN]\033[0m"
 
 results = []
 
 
 def run(cmd):
-    """Exécute une commande shell et retourne stdout (str), ou None si erreur."""
+    """Exécute une commande et retourne stdout, ou None en cas d'erreur."""
     try:
         output = subprocess.run(
             cmd, shell=True, capture_output=True, text=True, timeout=5
@@ -54,7 +52,9 @@ def check_ufw_active():
 
 def check_ssh_port_allowed():
     out = run("sudo ufw status")
-    ok = out is not None and re.search(r"(22/tcp|OpenSSH).*ALLOW", out, re.IGNORECASE) is not None
+    ok = out is not None and re.search(
+        r"(22/tcp|OpenSSH).*ALLOW", out, re.IGNORECASE
+    ) is not None
     check("Port SSH (22) autorisé dans ufw", ok)
 
 
@@ -64,28 +64,24 @@ def check_no_open_world_writable(paths=("/var/www", "/srv")):
         out = run(f"find {path} -type d -perm -002 2>/dev/null")
         if out:
             problems.extend(out.splitlines())
+
     ok = len(problems) == 0
-    detail = f"{len(problems)} dossier(s) en 777/world-writable" if problems else "aucun"
-    check("Pas de dossiers world-writable (777)", ok, detail)
+    detail = f"{len(problems)} dossier(s) world-writable" if problems else "aucun"
+    check("Pas de dossiers world-writable", ok, detail)
 
 
 def check_updates():
-    # Met à jour le cache de manière silencieuse
     run("sudo apt update -qq")
-    
-    # Récupère la liste brute des paquets upgradables
     raw_out = run("apt list --upgradable 2>/dev/null")
-    
-    # Filtre pour ne garder que les vraies lignes de paquets (qui contiennent '[')
-    pkgs = [line for line in raw_out.splitlines() if "[" in line] if raw_out else []
-    
+    pkgs = [line for line in raw_out.splitlines() if "/" in line and "upgradable" in line] if raw_out else []
+
     ok = len(pkgs) == 0
-    nb = len(pkgs)
-    check("Système à jour", ok, f"{nb} paquet(s) à mettre à jour" if nb else "à jour")
+    detail = f"{len(pkgs)} paquet(s) à mettre à jour" if pkgs else "à jour"
+    check("Système à jour", ok, detail)
 
 
-def check_no_password_auth_users():
-    """Vérifie qu'aucun utilisateur normal n'a un mdp vide ou désactivé de façon dangereuse."""
+def check_no_empty_passwords():
+    """Vérifie qu'aucun compte ne possède un mot de passe vide."""
     out = run("sudo awk -F: '($2==\"\"){print $1}' /etc/shadow")
     ok = out == "" or out is None
     check("Aucun compte avec mot de passe vide", ok, out or "aucun")
@@ -103,7 +99,7 @@ def main():
     check_ufw_active()
     check_ssh_port_allowed()
     check_no_open_world_writable()
-    check_no_password_auth_users()
+    check_no_empty_passwords()
     check_updates()
 
     print("=" * 55)
@@ -112,11 +108,11 @@ def main():
     print(f"Résultat global : {passed}/{total} vérifications passées")
 
     if passed < total:
-        print("⚠️  Des points de durcissement restent à corriger.")
+        print("⚠️ Des points de durcissement restent à corriger.")
         sys.exit(1)
-    else:
-        print("✅ Tous les contrôles de sécurité sont conformes.")
-        sys.exit(0)
+
+    print("✅ Tous les contrôles de sécurité sont conformes.")
+    sys.exit(0)
 
 
 if __name__ == "__main__":
